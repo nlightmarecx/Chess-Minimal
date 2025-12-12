@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Chess Minimal</title>
+  <script src="https://unpkg.com/chess.js@1.0.0/chess.js"></script>
+</head>
+<body>
+
+<button id="move">Play e2e4</button>
+<pre id="state"></pre>
+
+<script>
+  const game = new Chess();
+
+  function render() {
+    document.getElementById("state").textContent =
+      game.fen() + "\n\n" + game.ascii();
+  }
+
+  document.getElementById("move").onclick = () => {
+    const result = game.move("e4"); // try illegal move later
+    console.log(result);            // null if illegal
+    render();
+  };
+
+  render();
+</script>
+
+</body>
+</html>
