@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Chess Visual Board</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 16px; }
+    #board { display: grid; grid-template-columns: repeat(8, 56px); width: max-content; border: 2px solid #333; }
+    .sq { width: 56px; height: 56px; display:flex; align-items:center; justify-content:center; font-size: 34px; cursor: pointer; user-select: none; }
+    .light { background: #eee; }
+    .dark { background: #999; }
+    .selected { outline: 4px solid #2b7cff; outline-offset: -4px; }
+    .hint { outline: 4px solid #35c759; outline-offset: -4px; }
+    #status { margin-top: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+
+<h3>Visual Chess Board (click-to-move)</h3>
+<div id="board"></div>
+<div id="status"></div>
+
+<script>
+  const game = new Chess();
+  const boardEl = document.getElementById("board");
+  const statusEl = document.getElementById("status");
+
+  // Unicode chess pieces
+  const pieceToChar = (p) => {
+    const map = {
+      wp: "♙", wn: "♘", wb: "♗", wr: "♖", wq: "♕", wk: "♔",
+      bp: "♟", bn: "♞", bb: "♝", br: "♜", bq: "♛", bk: "♚"
+    };
+    return map[p.color + p.type] || "";
+  };
+
+  let selectedSquare = null;
+
+  function squareColor(file, rank) {
+    // file: 0..7 (a..h), rank: 0..7 (8..1)
+    return ((file + rank) % 2 === 0) ? "dark" : "light";
+  }
+
+  function render() {
+    boardEl.innerHTML = "";
+    const board = game.board(); // 8x8 array, ranks 8->1
+
+    for (let r = 0; r < 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const sqEl = document.createElement("div");
+        sqEl.className = "sq " + squareColor(f, r);
+
+        const fileChar = "abcdefgh"[f];
+        const rankChar = String(8 - r);
+        const square = fileChar + rankChar;
+
+        sqEl.dataset.square = square;
+
+        const piece = board[r][f];
+        sqEl.textContent = piece ? pieceToChar(piece) : "";
+
+        if (selectedSquare === square) sqEl.classList.add("selected");
+
+        sqEl.onclick = () => onSquareClick(square);
+
+        boardEl.appendChild(sqEl);
+      }
+    }
+
+    statusEl.textContent =
+      "Turn: " + (game.turn() === "w" ? "White" : "Black") + "\n" +
+      "FEN: " + game.fen();
+  }
+
+  function clearHints() {
+    document.querySelectorAll(".hint").forEach(el => el.classList.remove("hint"));
+  }
+
+  function showHints(fromSquare) {
+    clearHints();
+    const moves = game.moves({ square: fromSquare, verbose: true });
+    for (const m of moves) {
+      const el = boardEl.querySelector(`[data-square="${m.to}"]`);
+      if (el) el.classList.add("hint");
+    }
+  }
+
+function makeRandomAIMove() {
+  const moves = game.moves({ verbose: true });
+  if (moves.length === 0) return; // game over
+  const m = moves[Math.floor(Math.random() * moves.length)];
+  game.move({ from: m.from, to: m.to, promotion: "q" });
+}
+
+
+  function onSquareClick(square) {
+  const piece = game.get(square);
+
+  // First click: select one of your own pieces
+  if (!selectedSquare) {
+    if (!piece) return;
+    if (piece.color !== game.turn()) return;
+
+    selectedSquare = square;
+    showHints(square);
+    render();
+    return;
+  }
+
+  // Second click: try to move selected -> clicked
+  const move = game.move({ from: selectedSquare, to: square, promotion: "q" });
+
+  selectedSquare = null;
+  clearHints();
+
+  // Always re-render (even if illegal)
+  render();
+
+  // If move was legal, let AI respond
+  if (move) {
+    setTimeout(() => {
+      makeRandomAIMove();
+      render();
+    }, 300);
+  }
+}
+
+
+  render();
+</script>
+
+</body>
+</html>
