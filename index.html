@@ -18,11 +18,14 @@
       game.fen() + "\n\n" + game.ascii();
   }
 
-  document.getElementById("move").onclick = () => {
-    const result = game.move("e4"); // try illegal move later
-    console.log(result);            // null if illegal
-    render();
-  };
+document.getElementById("move").onclick = () => {
+  const move1 = game.move({ from: "e2", to: "e4" }); // White
+  if (!move1) { console.log("move1 illegal"); return render(); }
+
+  const move2 = game.move({ from: "e7", to: "e5" }); // Black
+  console.log(move1, move2);
+  render();
+};
 
   render();
 </script>
