@@ -18,6 +18,11 @@
 <body>
 
 <h3>Visual Chess Board (click-to-move)</h3>
+<div style="margin: 8px 0;">
+  <input id="moves" style="width: 420px;" placeholder="Paste moves like: e2e4 c7c5 g1f3" />
+  <button id="apply">Apply moves</button>
+</div>
+
 <div id="board"></div>
 <div id="status"></div>
 
@@ -25,6 +30,13 @@
   const game = new Chess();
   const boardEl = document.getElementById("board");
   const statusEl = document.getElementById("status");
+
+document.getElementById("apply").onclick = () => {
+  const s = document.getElementById("moves").value;
+  applyUciMoves(s);
+  render();
+};
+
 
   // Unicode chess pieces
   const pieceToChar = (p) => {
@@ -118,14 +130,28 @@ function makeRandomAIMove() {
   render();
 
   // If move was legal, let AI respond
-  if (move) {
-    setTimeout(() => {
-      makeRandomAIMove();
-      render();
+  if (move && game.turn() === "b") {
+  setTimeout(() => {
+    makeRandomAIMove();
+    render();
     }, 300);
   }
 }
 
+function applyUciMoves(movesStr) {
+  game.reset();
+  if (!movesStr) return;
+  for (const uci of movesStr.trim().split(/\s+/)) {
+    const from = uci.slice(0, 2);
+    const to = uci.slice(2, 4);
+    const promo = uci.length >= 5 ? uci[4] : "q";
+    const ok = game.move({ from, to, promotion: promo });
+    if (!ok) {
+      console.log("Failed to apply UCI move:", uci, "Current FEN:", game.fen());
+      break;
+    }
+  }
+}
 
   render();
 </script>
