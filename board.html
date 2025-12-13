@@ -121,7 +121,33 @@ function makeRandomAIMove() {
   }
 
   // Second click: try to move selected -> clicked
-  const move = game.move({ from: selectedSquare, to: square, promotion: "q" });
+// If we're connected to a Lichess game, SEND the move to the referee instead of applying locally.
+// The stream will echo the accepted move back and update the board.
+if (window.lichessGameId) {
+  const from = selectedSquare;
+  const to = square;
+
+  // Basic UCI (promotion handled as 'q' when you reach last rank)
+  const moving = game.get(from);
+  const isPawn = moving && moving.type === "p";
+  const promoteRank = (moving && moving.color === "w") ? "8" : "1";
+  const needsPromo = isPawn && to[1] === promoteRank;
+  const uci = from + to + (needsPromo ? "q" : "");
+
+  // Clear selection visuals immediately
+  selectedSquare = null;
+  clearHints();
+  render();
+
+  fetch(`http://127.0.0.1:3001/move/${window.lichessGameId}/${uci}`, { method: "POST" })
+    .then(r => console.log("Sent move", uci, "status", r.status))
+    .catch(e => console.error("Send move failed", e));
+
+  return;
+}
+
+// Otherwise, local mode:
+const move = game.move({ from: selectedSquare, to: square, promotion: "q" });
 
   selectedSquare = null;
   clearHints();
