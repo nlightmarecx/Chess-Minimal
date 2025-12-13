@@ -1,0 +1,25 @@
+{
+  "name": "chess-minimal",
+  "version": "1.0.0",
+  "description": "A minimal chess app experiment: legal move validation + basic UI later.",
+  "main": "lichess-adapter.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nlightmarecx/Chess-Minimal.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nlightmarecx/Chess-Minimal/issues"
+  },
+  "homepage": "https://github.com/nlightmarecx/Chess-Minimal#readme",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "node-fetch": "^3.3.2"
+  }
+}

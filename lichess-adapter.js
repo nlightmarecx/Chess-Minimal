@@ -1,13 +1,36 @@
 // lichess-adapter.js
-// Goal: later, this file will subscribe to a Lichess game stream and keep board.html in sync.
-// For now, it just exposes one function you can call manually.
+export async function connectToGame(gameId) {
+  const url = `http://127.0.0.1:3001/stream/${gameId}`;
+  const res = await fetch(url);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
 
-export function feedMovesStringToBoard(movesStr) {
-  // board.html will provide applyUciMoves globally in the next step
-  if (typeof window.applyUciMoves !== "function") {
-    console.error("applyUciMoves not found on window. Is board.html exposing it?");
-    return;
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+
+    let idx;
+    while ((idx = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+
+      const msg = JSON.parse(line);
+
+      // Lichess sends gameState updates with a `moves` string
+      if (msg.type === "gameState" && typeof msg.moves === "string") {
+        console.log("LIVE moves:", msg.moves);
+
+        if (typeof window.applyUciMoves === "function") {
+          window.applyUciMoves(msg.moves);
+          if (typeof window.renderBoard === "function") window.renderBoard();
+        }
+      }
+    }
   }
-  window.applyUciMoves(movesStr);
-  if (typeof window.renderBoard === "function") window.renderBoard();
 }
+
+// Optional helper: expose for easy calling from console
+window.connectToGame = connectToGame;
