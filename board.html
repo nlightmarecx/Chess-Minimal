@@ -153,8 +153,14 @@ function applyUciMoves(movesStr) {
   }
 }
 
+window.applyUciMoves = applyUciMoves;
+window.renderBoard = render;
+
+
   render();
 </script>
+
+<script type="module" src="./lichess-adapter.js"></script>
 
 </body>
 </html>
