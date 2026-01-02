@@ -1,5 +1,5 @@
-// lichess-adapter.js
-export async function connectToGame(gameId) {
+// lichess-adapter.js - This should be in a SEPARATE FILE
+async function connectToGame(gameId) {
   const url = `http://127.0.0.1:3001/stream/${gameId}`;
   const res = await fetch(url);
   const reader = res.body.getReader();
@@ -32,5 +32,5 @@ export async function connectToGame(gameId) {
   }
 }
 
-// Optional helper: expose for easy calling from console
+// Make it available globally
 window.connectToGame = connectToGame;

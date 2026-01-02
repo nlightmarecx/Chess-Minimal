@@ -2,41 +2,79 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Chess Visual Board</title>
+  <title>Chess Board - Lichess Integration</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 16px; }
-    #board { display: grid; grid-template-columns: repeat(8, 56px); width: max-content; border: 2px solid #333; }
+    body { font-family: Arial, sans-serif; padding: 16px; max-width: 800px; margin: 0 auto; }
+    #board { display: grid; grid-template-columns: repeat(8, 56px); width: max-content; border: 2px solid #333; margin: 16px 0; }
     .sq { width: 56px; height: 56px; display:flex; align-items:center; justify-content:center; font-size: 34px; cursor: pointer; user-select: none; }
-    .light { background: #eee; }
-    .dark { background: #999; }
+    .light { background: #f0d9b5; }
+    .dark { background: #b58863; }
     .selected { outline: 4px solid #2b7cff; outline-offset: -4px; }
     .hint { outline: 4px solid #35c759; outline-offset: -4px; }
-    #status { margin-top: 12px; white-space: pre-wrap; }
+    .last-move { background-color: rgba(255, 255, 0, 0.3); }
+    #status { margin-top: 12px; white-space: pre-wrap; background: #f5f5f5; padding: 10px; border-radius: 5px; }
+    .controls { margin: 16px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+    input, button { padding: 8px 12px; font-size: 14px; }
+    #lichess-controls { background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 20px 0; }
+    #game-info { background: #f0f8ff; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
 
-<h3>Visual Chess Board (click-to-move)</h3>
-<div style="margin: 8px 0;">
-  <input id="moves" style="width: 420px;" placeholder="Paste moves like: e2e4 c7c5 g1f3" />
-  <button id="apply">Apply moves</button>
+<h1>Chess Board - Lichess Integration</h1>
+
+<!-- Lichess Connection Controls -->
+<div id="lichess-controls">
+  <h3>🎮 Play Online via Lichess</h3>
+  <div class="controls">
+    <button id="createAI">🤖 Play vs AI</button>
+    <button id="createHuman">👥 Challenge Friend</button>
+    <button id="disconnect" disabled>❌ Disconnect</button>
+  </div>
+  <div style="margin-top: 10px;">
+    <input id="gameId" placeholder="Or paste Game ID to join existing game" style="width: 300px;" />
+    <button id="connect">Connect</button>
+  </div>
+  <div id="game-info" style="display: none;">
+    <strong>Game ID:</strong> <span id="current-game">-</span><br>
+    <strong>Playing as:</strong> <span id="player-color">-</span><br>
+    <strong>Status:</strong> <span id="connection-status">Disconnected</span>
+  </div>
 </div>
 
+<!-- Board Controls -->
+<div class="controls">
+  <button id="flip">🔄 Flip Board</button>
+  <button id="reset">♻️ Reset Board</button>
+  <button id="undo">⬅️ Undo Move</button>
+</div>
+
+<!-- Chess Board -->
 <div id="board"></div>
+
+<!-- Status Display -->
 <div id="status"></div>
+
+<!-- Move History -->
+<div id="move-history" style="margin-top: 20px;">
+  <h4>📜 Move History</h4>
+  <div id="moves-list" style="max-height: 200px; overflow-y: auto; padding: 10px; background: #f9f9f9;"></div>
+</div>
 
 <script>
   const game = new Chess();
   const boardEl = document.getElementById("board");
   const statusEl = document.getElementById("status");
-
-document.getElementById("apply").onclick = () => {
-  const s = document.getElementById("moves").value;
-  applyUciMoves(s);
-  render();
-};
-
+  const movesListEl = document.getElementById("moves-list");
+  let selectedSquare = null;
+  let lastMoveFrom = null;
+  let lastMoveTo = null;
+  let boardFlipped = false;
+  let lichessGameId = null;
+  let myColor = null; // 'white' or 'black'
+  let gameActive = false;
 
   // Unicode chess pieces
   const pieceToChar = (p) => {
@@ -47,27 +85,286 @@ document.getElementById("apply").onclick = () => {
     return map[p.color + p.type] || "";
   };
 
-  let selectedSquare = null;
+  // Control buttons
+  document.getElementById("reset").onclick = () => {
+    game.reset();
+    selectedSquare = null;
+    lastMoveFrom = lastMoveTo = null;
+    movesListEl.innerHTML = "";
+    render();
+  };
+
+  document.getElementById("undo").onclick = () => {
+    if (lichessGameId) {
+      alert("Cannot undo moves in online games");
+      return;
+    }
+    const move = game.undo();
+    if (move) {
+      updateMoveHistory();
+      render();
+    }
+  };
+
+  document.getElementById("flip").onclick = () => {
+    boardFlipped = !boardFlipped;
+    render();
+  };
+
+  // Lichess connection
+  document.getElementById("connect").onclick = async () => {
+    const gameId = document.getElementById("gameId").value.trim();
+    if (!gameId) {
+      alert("Please enter a game ID");
+      return;
+    }
+    
+    await connectToGame(gameId);
+  };
+
+  document.getElementById("createAI").onclick = async () => {
+    try {
+      // Disable button during creation
+      document.getElementById("createAI").disabled = true;
+      
+      const response = await fetch('http://127.0.0.1:3001/challenge/ai', {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create game: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const gameId = data.id;
+      
+      if (gameId) {
+        console.log("AI game created:", gameId);
+        document.getElementById("gameId").value = gameId;
+        await connectToGame(gameId);
+      }
+    } catch (error) {
+      alert("Failed to create AI game: " + error.message);
+      console.error(error);
+    } finally {
+      document.getElementById("createAI").disabled = false;
+    }
+  };
+
+  document.getElementById("createHuman").onclick = async () => {
+    const timeControl = prompt("Time control (e.g., '5+3' for 5 minutes + 3 seconds):", "5+3");
+    if (!timeControl) return;
+    
+    try {
+      const [minutes, increment] = timeControl.split('+').map(Number);
+      
+      const response = await fetch('http://127.0.0.1:3001/challenge/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clock: { limit: minutes * 60, increment: increment },
+          rated: false
+        })
+      });
+      
+      const data = await response.json();
+      if (data.challenge && data.challenge.id) {
+        const gameUrl = `https://lichess.org/${data.challenge.id}`;
+        const msg = `🎯 Challenge created!\n\nShare this link:\n${gameUrl}\n\nOnce accepted, the game ID is: ${data.challenge.id}`;
+        alert(msg);
+        document.getElementById("gameId").value = data.challenge.id;
+        
+        // Ask if they want to auto-connect when opponent joins
+        if (confirm("Auto-connect when opponent joins?")) {
+          await connectToGame(data.challenge.id);
+        }
+      }
+    } catch (error) {
+      alert("Failed to create challenge: " + error.message);
+      console.error(error);
+    }
+  };
+
+  document.getElementById("disconnect").onclick = () => {
+    lichessGameId = null;
+    myColor = null;
+    gameActive = false;
+    updateGameInfo("", "", "Disconnected");
+    document.getElementById("disconnect").disabled = true;
+    document.getElementById("connect").disabled = false;
+    document.getElementById("createAI").disabled = false;
+    document.getElementById("createHuman").disabled = false;
+  };
+
+  async function connectToGame(gameId) {
+    try {
+      // Test connection first
+      const testResponse = await fetch(`http://127.0.0.1:3001/account/playing`);
+      if (!testResponse.ok) {
+        throw new Error("Cannot connect to proxy server. Make sure it's running on port 3001");
+      }
+      
+      lichessGameId = gameId;
+      gameActive = true;
+      updateGameInfo(gameId, "Connecting...", "Connecting...");
+      
+      // Start streaming game updates
+      streamGame(gameId);
+      
+      // Update UI
+      document.getElementById("disconnect").disabled = false;
+      document.getElementById("connect").disabled = true;
+      document.getElementById("createAI").disabled = true;
+      document.getElementById("createHuman").disabled = true;
+      
+    } catch (error) {
+      alert("Connection failed: " + error.message);
+      updateGameInfo("", "", "Connection failed");
+      console.error(error);
+    }
+  }
+
+  async function streamGame(gameId) {
+    try {
+      const url = `http://127.0.0.1:3001/stream/${gameId}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Stream failed: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (gameActive) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+
+        let lineEnd;
+        while ((lineEnd = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, lineEnd).trim();
+          buffer = buffer.slice(lineEnd + 1);
+          
+          if (!line) continue;
+
+          try {
+            const msg = JSON.parse(line);
+            handleStreamMessage(msg);
+          } catch (e) {
+            console.error("Failed to parse stream message:", line, e);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Stream error:", error);
+      if (gameActive) {
+        alert("Lost connection to game: " + error.message);
+        document.getElementById("disconnect").click();
+      }
+    }
+  }
+
+  function handleStreamMessage(msg) {
+    console.log("Stream message:", msg);
+
+    // Initial game state
+    if (msg.type === "gameFull") {
+      // Determine our color
+      const username = msg.white?.id || msg.white?.name;
+      // For AI games, we're always white. For human games, need to check token owner
+      // For simplicity, assume we're white unless we detect otherwise
+      myColor = "white"; // Default assumption
+      
+      updateGameInfo(lichessGameId, myColor, "Connected");
+      
+      // Apply initial moves if any
+      if (msg.state && msg.state.moves) {
+        applyUciMoves(msg.state.moves);
+        render();
+      } else {
+        game.reset();
+        render();
+      }
+    }
+    
+    // Game state updates (moves)
+    if (msg.type === "gameState") {
+      if (msg.moves) {
+        applyUciMoves(msg.moves);
+        render();
+      }
+      
+      // Check game status
+      if (msg.status === "mate" || msg.status === "resign" || 
+          msg.status === "stalemate" || msg.status === "draw") {
+        updateGameInfo(lichessGameId, myColor, `Game Over: ${msg.status}`);
+        gameActive = false;
+      }
+    }
+  }
+
+  function updateGameInfo(gameId, playerColor, status) {
+    const gameInfo = document.getElementById("game-info");
+    const currentGame = document.getElementById("current-game");
+    const colorDisplay = document.getElementById("player-color");
+    const connectionStatus = document.getElementById("connection-status");
+    
+    if (gameId) {
+      gameInfo.style.display = "block";
+      currentGame.textContent = gameId;
+      colorDisplay.textContent = playerColor || "-";
+      connectionStatus.textContent = status;
+    } else {
+      gameInfo.style.display = "none";
+    }
+  }
+
+  function updateMoveHistory() {
+    const history = game.history({ verbose: true });
+    movesListEl.innerHTML = history.map((move, i) => 
+      `<div>${Math.floor(i/2) + 1}. ${move.from}→${move.to} ${move.promotion ? `(${move.promotion})` : ''}</div>`
+    ).join('');
+    
+    // Scroll to bottom
+    if (movesListEl.lastElementChild) {
+      movesListEl.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
 
   function squareColor(file, rank) {
-    // file: 0..7 (a..h), rank: 0..7 (8..1)
     return ((file + rank) % 2 === 0) ? "dark" : "light";
   }
 
   function render() {
     boardEl.innerHTML = "";
-    const board = game.board(); // 8x8 array, ranks 8->1
+    const board = game.board();
 
-    for (let r = 0; r < 8; r++) {
-      for (let f = 0; f < 8; f++) {
+    // Determine rendering order based on boardFlipped
+    const rankOrder = boardFlipped ? 
+      Array.from({length: 8}, (_, i) => i) : 
+      Array.from({length: 8}, (_, i) => 7 - i);
+    
+    const fileOrder = boardFlipped ? 
+      Array.from({length: 8}, (_, i) => 7 - i) : 
+      Array.from({length: 8}, (_, i) => i);
+
+    for (const r of rankOrder) {
+      for (const f of fileOrder) {
         const sqEl = document.createElement("div");
-        sqEl.className = "sq " + squareColor(f, r);
-
         const fileChar = "abcdefgh"[f];
         const rankChar = String(8 - r);
         const square = fileChar + rankChar;
 
+        sqEl.className = `sq ${squareColor(f, r)}`;
         sqEl.dataset.square = square;
+
+        // Highlight last move
+        if ((lastMoveFrom === square || lastMoveTo === square) && (lastMoveFrom || lastMoveTo)) {
+          sqEl.classList.add("last-move");
+        }
 
         const piece = board[r][f];
         sqEl.textContent = piece ? pieceToChar(piece) : "";
@@ -75,14 +372,20 @@ document.getElementById("apply").onclick = () => {
         if (selectedSquare === square) sqEl.classList.add("selected");
 
         sqEl.onclick = () => onSquareClick(square);
-
         boardEl.appendChild(sqEl);
       }
     }
 
+    // Update status
     statusEl.textContent =
-      "Turn: " + (game.turn() === "w" ? "White" : "Black") + "\n" +
-      "FEN: " + game.fen();
+      `Turn: ${game.turn() === "w" ? "White" : "Black"}\n` +
+      `FEN: ${game.fen()}\n` +
+      `Game Over: ${game.game_over() ? "Yes" : "No"}\n` +
+      `Check: ${game.in_check() ? "Yes" : "No"}\n` +
+      `Moves: ${game.history().length}` +
+      (lichessGameId ? `\n\nOnline Game: ${lichessGameId}` : '');
+
+    updateMoveHistory();
   }
 
   function clearHints() {
@@ -98,95 +401,121 @@ document.getElementById("apply").onclick = () => {
     }
   }
 
-function makeRandomAIMove() {
-  const moves = game.moves({ verbose: true });
-  if (moves.length === 0) return; // game over
-  const m = moves[Math.floor(Math.random() * moves.length)];
-  game.move({ from: m.from, to: m.to, promotion: "q" });
-}
-
-
   function onSquareClick(square) {
-  const piece = game.get(square);
+    const piece = game.get(square);
 
-  // First click: select one of your own pieces
-  if (!selectedSquare) {
-    if (!piece) return;
-    if (piece.color !== game.turn()) return;
+    // First click: select piece
+    if (!selectedSquare) {
+      if (!piece) return;
+      
+      // Only allow selecting pieces of current turn
+      if (piece.color !== game.turn()) return;
+      
+      // If online, check if it's our turn
+      if (lichessGameId && myColor) {
+        const isOurTurn = (myColor === "white" && game.turn() === "w") ||
+                         (myColor === "black" && game.turn() === "b");
+        if (!isOurTurn) {
+          console.log("Not your turn");
+          return;
+        }
+      }
 
-    selectedSquare = square;
-    showHints(square);
+      selectedSquare = square;
+      showHints(square);
+      render();
+      return;
+    }
+
+    // Second click: try to move
+    const from = selectedSquare;
+    const to = square;
+    const moving = game.get(from);
+    
+    // Determine promotion
+    let promotion = null;
+    if (moving && moving.type === "p") {
+      const promoteRank = (moving.color === "w") ? "8" : "1";
+      if (to[1] === promoteRank) {
+        promotion = "q"; // Always queen for now
+      }
+    }
+
+    // If online game, send move to Lichess
+    if (lichessGameId) {
+      const uci = from + to + (promotion || "");
+      
+      // Clear selection immediately
+      selectedSquare = null;
+      clearHints();
+
+      // Send move
+      fetch(`http://127.0.0.1:3001/move/${lichessGameId}/${uci}`, { 
+        method: "POST" 
+      })
+      .then(async r => {
+        if (r.ok) {
+          console.log("Move sent successfully:", uci);
+          // Board will update from stream
+        } else {
+          const result = await r.json();
+          alert(`Move rejected: ${result.message || "Invalid move"}`);
+          render();
+        }
+      })
+      .catch(e => {
+        console.error("Send move failed:", e);
+        alert("Network error sending move");
+        render();
+      });
+
+      return;
+    }
+
+    // Local mode: apply move directly
+    const move = game.move({ 
+      from: from, 
+      to: to, 
+      promotion: promotion || "q" 
+    });
+
+    if (move) {
+      lastMoveFrom = from;
+      lastMoveTo = to;
+    }
+
+    selectedSquare = null;
+    clearHints();
     render();
-    return;
   }
 
-  // Second click: try to move selected -> clicked
-// If we're connected to a Lichess game, SEND the move to the referee instead of applying locally.
-// The stream will echo the accepted move back and update the board.
-if (window.lichessGameId) {
-  const from = selectedSquare;
-  const to = square;
-
-  // Basic UCI (promotion handled as 'q' when you reach last rank)
-  const moving = game.get(from);
-  const isPawn = moving && moving.type === "p";
-  const promoteRank = (moving && moving.color === "w") ? "8" : "1";
-  const needsPromo = isPawn && to[1] === promoteRank;
-  const uci = from + to + (needsPromo ? "q" : "");
-
-  // Clear selection visuals immediately
-  selectedSquare = null;
-  clearHints();
-  render();
-
-  fetch(`http://127.0.0.1:3001/move/${window.lichessGameId}/${uci}`, { method: "POST" })
-    .then(r => console.log("Sent move", uci, "status", r.status))
-    .catch(e => console.error("Send move failed", e));
-
-  return;
-}
-
-// Otherwise, local mode:
-const move = game.move({ from: selectedSquare, to: square, promotion: "q" });
-
-  selectedSquare = null;
-  clearHints();
-
-  // Always re-render (even if illegal)
-  render();
-
-  // If move was legal, let AI respond
-  if (move && game.turn() === "b") {
-  setTimeout(() => {
-    makeRandomAIMove();
-    render();
-    }, 300);
-  }
-}
-
-function applyUciMoves(movesStr) {
-  game.reset();
-  if (!movesStr) return;
-  for (const uci of movesStr.trim().split(/\s+/)) {
-    const from = uci.slice(0, 2);
-    const to = uci.slice(2, 4);
-    const promo = uci.length >= 5 ? uci[4] : "q";
-    const ok = game.move({ from, to, promotion: promo });
-    if (!ok) {
-      console.log("Failed to apply UCI move:", uci, "Current FEN:", game.fen());
-      break;
+  function applyUciMoves(movesStr) {
+    game.reset();
+    lastMoveFrom = lastMoveTo = null;
+    if (!movesStr) return;
+    
+    const moves = movesStr.trim().split(/\s+/);
+    for (const uci of moves) {
+      if (uci.length < 4) continue;
+      
+      const from = uci.slice(0, 2);
+      const to = uci.slice(2, 4);
+      const promo = uci.length >= 5 ? uci[4] : undefined;
+      
+      const ok = game.move({ from, to, promotion: promo });
+      if (!ok) {
+        console.error("Failed to apply UCI move:", uci);
+        break;
+      }
+      
+      lastMoveFrom = from;
+      lastMoveTo = to;
     }
   }
-}
 
-window.applyUciMoves = applyUciMoves;
-window.renderBoard = render;
-
-
+  // Initial render
   render();
 </script>
-
-<script type="module" src="./lichess-adapter.js"></script>
 
 </body>
 </html>
